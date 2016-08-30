@@ -15,6 +15,7 @@ const (
 	Volume   SourceType = "volume"
 	Snapshot SourceType = "snapshot"
 	Image    SourceType = "image"
+	Blank    SourceType = "blank"
 )
 
 // BlockDevice is a structure with options for booting a server instance
@@ -31,6 +32,9 @@ type BlockDevice struct {
 	// DestinationType [optional] is the type that gets created. Possible values are "volume"
 	// and "local".
 	DestinationType string `json:"destination_type"`
+
+	// GuestFormat [optional] specifies the format of the block device.
+	GuestFormat string `json:"guest_format"`
 
 	// SourceType [required] must be one of: "volume", "snapshot", "image".
 	SourceType SourceType `json:"source_type"`
@@ -75,12 +79,17 @@ func (opts CreateOptsExt) ToServerCreateMap() (map[string]interface{}, error) {
 		blockDevice[i]["source_type"] = bd.SourceType
 		blockDevice[i]["boot_index"] = strconv.Itoa(bd.BootIndex)
 		blockDevice[i]["delete_on_termination"] = strconv.FormatBool(bd.DeleteOnTermination)
-		blockDevice[i]["volume_size"] = strconv.Itoa(bd.VolumeSize)
+		if bd.VolumeSize > 0 {
+			blockDevice[i]["volume_size"] = strconv.Itoa(bd.VolumeSize)
+		}
 		if bd.UUID != "" {
 			blockDevice[i]["uuid"] = bd.UUID
 		}
 		if bd.DestinationType != "" {
 			blockDevice[i]["destination_type"] = bd.DestinationType
+		}
+		if bd.GuestFormat != "" {
+			blockDevice[i]["guest_format"] = bd.GuestFormat
 		}
 
 	}
@@ -98,6 +107,11 @@ func Create(client *gophercloud.ServiceClient, opts servers.CreateOptsBuilder) s
 		res.Err = err
 		return res
 	}
+
+	// Delete imageName and flavorName that come from ToServerCreateMap().
+	// As of Liberty, Boot From Volume is failing if they are passed.
+	delete(reqBody["server"].(map[string]interface{}), "imageName")
+	delete(reqBody["server"].(map[string]interface{}), "flavorName")
 
 	_, res.Err = client.Post(createURL(client), reqBody, &res.Body, &gophercloud.RequestOpts{
 		OkCodes: []int{200, 202},
