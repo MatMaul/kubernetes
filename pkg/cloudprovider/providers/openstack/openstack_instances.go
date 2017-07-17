@@ -18,6 +18,8 @@ package openstack
 
 import (
 	"errors"
+	"net"
+	"strings"
 
 	"github.com/golang/glog"
 	"github.com/gophercloud/gophercloud"
@@ -80,7 +82,7 @@ func (i *Instances) List(name_filter string) ([]types.NodeName, error) {
 // Implementation of Instances.CurrentNodeName
 // Note this is *not* necessarily the same as hostname.
 func (i *Instances) CurrentNodeName(hostname string) (types.NodeName, error) {
-	md, err := getMetadata()
+	md, _, err := getMetadata()
 	if err != nil {
 		return "", err
 	}
@@ -94,6 +96,23 @@ func (i *Instances) AddSSHKeyToAllInstances(user string, keyData []byte) error {
 func (i *Instances) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error) {
 	glog.V(4).Infof("NodeAddresses(%v) called", name)
 
+	_, nd, err := getMetadata()
+	if err == nil && nd != nil {
+		addresses := []v1.NodeAddress{}
+		for _, network := range nd.Networks {
+			IP := network.IP
+			if IP != "" {
+				addresses = append(addresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: IP})
+			} else if network.Link != nil {
+				MAC := strings.ToLower(network.Link.MAC)
+				for _, addr := range getAdressesFromMAC(MAC) {
+					addresses = append(addresses, addr)
+				}
+			}
+		}
+		return addresses, nil
+	}
+
 	addrs, err := getAddressesByName(i.compute, name)
 	if err != nil {
 		return nil, err
@@ -101,6 +120,25 @@ func (i *Instances) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error)
 
 	glog.V(4).Infof("NodeAddresses(%v) => %v", name, addrs)
 	return addrs, nil
+}
+
+func getAdressesFromMAC(MAC string) []v1.NodeAddress {
+	addresses := []v1.NodeAddress{}
+	interfaces, err := net.Interfaces()
+	if err == nil {
+		for _, i := range interfaces {
+			if MAC == i.HardwareAddr.String() {
+				addrs, err := i.Addrs()
+				if err == nil {
+					for _, addr := range addrs {
+						addresses = append(addresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: addr.String()})
+					}
+				}
+				break
+			}
+		}
+	}
+	return addresses
 }
 
 // NodeAddressesByProviderID returns the node addresses of an instances with the specified unique providerID

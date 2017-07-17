@@ -208,7 +208,7 @@ func readInstanceID() (string, error) {
 		// Fall through to metadata server lookup
 	}
 
-	md, err := getMetadata()
+	md, _, err := getMetadata()
 	if err != nil {
 		return "", err
 	}
@@ -481,7 +481,7 @@ func (os *OpenStack) Zones() (cloudprovider.Zones, bool) {
 	return os, true
 }
 func (os *OpenStack) GetZone() (cloudprovider.Zone, error) {
-	md, err := getMetadata()
+	md, _, err := getMetadata()
 	if err != nil {
 		return cloudprovider.Zone{}, err
 	}
