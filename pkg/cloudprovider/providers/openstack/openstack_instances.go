@@ -91,12 +91,19 @@ func (i *Instances) AddSSHKeyToAllInstances(user string, keyData []byte) error {
 	return errors.New("unimplemented")
 }
 
+var addressesCache map[types.NodeName][]v1.NodeAddress = make(map[types.NodeName][]v1.NodeAddress)
+
 func (i *Instances) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error) {
 	glog.V(4).Infof("NodeAddresses(%v) called", name)
 
-	addrs, err := getAddressesByName(i.compute, name)
-	if err != nil {
-		return nil, err
+	addrs, ok := addressesCache[name]
+	if !ok {
+		var err error
+		addrs, err = getAddressesByName(i.compute, name)
+		if err != nil {
+			return nil, err
+		}
+		addressesCache[name] = addrs
 	}
 
 	glog.V(4).Infof("NodeAddresses(%v) => %v", name, addrs)
