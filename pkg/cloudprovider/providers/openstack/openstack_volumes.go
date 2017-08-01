@@ -209,6 +209,32 @@ func (os *OpenStack) OperationPending(diskName string) (bool, string, error) {
 	return true, volumeStatus, nil
 }
 
+func (os *OpenStack) waitVolumeAttachStatus(volumeID string,
+	attachmentNeeded bool, timeout time.Duration) (*Volume, error) {
+
+	begin := time.Now()
+	for time.Now().Sub(begin) < timeout {
+		volume, err := os.getVolume(volumeID)
+		if err != nil {
+			return nil, err
+		}
+
+		if attachmentNeeded {
+			if volume.AttachedDevice != "" {
+				return &volume, nil
+			}
+		} else {
+			if volume.AttachedDevice == "" {
+				return &volume, nil
+			}
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	return nil, errors.New("timeout reached")
+}
+
 // Attaches given cinder volume to the compute running kubelet
 func (os *OpenStack) AttachDisk(instanceID, volumeID string) (string, error) {
 	volume, err := os.getVolume(volumeID)
@@ -242,6 +268,13 @@ func (os *OpenStack) AttachDisk(instanceID, volumeID string) (string, error) {
 	_, err = volumeattach.Create(cClient, instanceID, &volumeattach.CreateOpts{
 		VolumeID: volume.ID,
 	}).Extract()
+
+	glog.V(2).Infof("waiting for volume to attach")
+	_, err = os.waitVolumeAttachStatus(volumeID, true, 60 * time.Second)
+	if err != nil {
+		return "", err
+	}
+
 	timeTaken := time.Since(startTime).Seconds()
 	recordOpenstackOperationMetric("attach_disk", timeTaken, err)
 	if err != nil {
@@ -276,6 +309,11 @@ func (os *OpenStack) DetachDisk(instanceID, volumeID string) error {
 		// This is a blocking call and effects kubelet's performance directly.
 		// We should consider kicking it out into a separate routine, if it is bad.
 		err = volumeattach.Delete(cClient, instanceID, volume.ID).ExtractErr()
+		glog.V(2).Infof("waiting for volume to detach")
+		_, err := os.waitVolumeAttachStatus(volumeID, false, 60 * time.Second)
+		if err != nil {
+			return err
+		}
 		timeTaken := time.Since(startTime).Seconds()
 		recordOpenstackOperationMetric("detach_disk", timeTaken, err)
 		if err != nil {
