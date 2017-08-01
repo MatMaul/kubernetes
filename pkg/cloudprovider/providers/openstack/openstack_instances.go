@@ -98,6 +98,7 @@ func (i *Instances) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error)
 
 	addrs, ok := addressesCache[name]
 	if !ok {
+		glog.V(0).Infof("NodeAddresses no cache, call API")
 		var err error
 		addrs, err = getAddressesByName(i.compute, name)
 		if err != nil {
@@ -106,7 +107,7 @@ func (i *Instances) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error)
 		addressesCache[name] = addrs
 	}
 
-	glog.V(4).Infof("NodeAddresses(%v) => %v", name, addrs)
+	glog.V(0).Infof("NodeAddresses(%v) => %v", name, addrs)
 	return addrs, nil
 }
 
